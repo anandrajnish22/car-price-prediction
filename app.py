@@ -1,6 +1,3 @@
-# enhanced Streamlit UI for car price prediction
-# includes Car_Name dropdown, sliders, better layout, and feature importance (for linear model)
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -9,9 +6,9 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LinearRegression
 import os
 
-MODEL_FILE = "car_price_model.pkl"
-SCALER_FILE = "scaler.pkl"
-COLS_FILE = "feature_columns.pkl"
+MODEL_FILE = "models/model.pkl"
+SCALER_FILE = "models/scaler.pkl"
+FEATURE_COLS_FILE = "models/feature_columns.pkl"
 CSV_FILE = "car data.csv"
 
 st.set_page_config(page_title="Car Price Predictor", layout="wide")
@@ -20,17 +17,26 @@ st.title(" Car Selling Price Predictor 🚗 ")
 # -------------------------------
 # Load artifacts
 # -------------------------------
-
 def load_artifacts():
+    # more robust: raise clear error if file missing
+    if not os.path.exists(MODEL_FILE) or not os.path.exists(SCALER_FILE) or not os.path.exists(FEATURE_COLS_FILE):
+        raise FileNotFoundError(
+            "Model artifacts not found. Make sure models/model.pkl, models/scaler.pkl and "
+            "models/feature_columns.pkl exist in the repo."
+        )
     with open(MODEL_FILE, 'rb') as f:
         model = pickle.load(f)
     with open(SCALER_FILE, 'rb') as f:
         scaler = pickle.load(f)
-    with open(COLS_FILE, 'rb') as f:
+    with open(FEATURE_COLS_FILE, 'rb') as f:
         cols = pickle.load(f)
     return model, scaler, cols
 
-model, scaler, feature_cols = load_artifacts()
+try:
+    model, scaler, feature_cols = load_artifacts()
+except Exception as e:
+    st.error("Model artifacts not found or failed to load. See app logs. " + str(e))
+    st.stop()
 
 # -------------------------------
 # Load CSV for Car_Name options
@@ -61,25 +67,29 @@ transmission = st.sidebar.selectbox("Transmission", ["Manual", "Automatic"])
 # Prediction Logic
 # -------------------------------
 def predict_price():
+    # create zero row with columns from feature_cols
     row = pd.DataFrame(np.zeros((1, len(feature_cols))), columns=feature_cols)
-    
-    # numeric
-    if 'Year' in row.columns: row.at[0, 'Year'] = year
-    if 'Kms_Driven' in row.columns: row.at[0, 'Kms_Driven'] = kms_driven
-    if 'Present_Price' in row.columns: row.at[0, 'Present_Price'] = present_price
-    if 'Owner' in row.columns: row.at[0, 'Owner'] = owner
+
+    # numeric - ensure float dtype for scaler
+    if 'Year' in row.columns: row.at[0, 'Year'] = float(year)
+    if 'Kms_Driven' in row.columns: row.at[0, 'Kms_Driven'] = float(kms_driven)
+    if 'Present_Price' in row.columns: row.at[0, 'Present_Price'] = float(present_price)
+    if 'Owner' in row.columns: row.at[0, 'Owner'] = float(owner)
 
     # fuel
     fmap = {'Petrol': 0, 'Diesel': 1, 'CNG': 2}
-    if 'Fuel_Type' in row.columns: row.at[0, 'Fuel_Type'] = fmap[fuel_type]
+    if 'Fuel_Type' in row.columns: row.at[0, 'Fuel_Type'] = float(fmap.get(fuel_type, 0))
 
-    # seller\_dealer
+    # seller_dealer
     if 'Seller_Type_Dealer' in row.columns:
-        row.at[0, 'Seller_Type_Dealer'] = 1 if seller_type == 'Dealer' else 0
+        row.at[0, 'Seller_Type_Dealer'] = 1.0 if seller_type == 'Dealer' else 0.0
 
     # transmission_manual
     if 'Transmission_Manual' in row.columns:
-        row.at[0, 'Transmission_Manual'] = 1 if transmission == 'Manual' else 0
+        row.at[0, 'Transmission_Manual'] = 1.0 if transmission == 'Manual' else 0.0
+
+    # ensure ordering matches feature_cols and dtype floats
+    row = row[feature_cols].astype(float)
 
     row_scaled = scaler.transform(row)
     pred = model.predict(row_scaled)[0]
@@ -100,13 +110,18 @@ with col1:
 with col2:
     st.write("### Feature Importance (Linear Model Coefficients)")
     try:
+        # flatten coefficients if needed
+        coefs = np.ravel(model.coef_)
         coeff_df = pd.DataFrame({
             'Feature': feature_cols,
-            'Coefficient': model.coef_
+            'Coefficient': coefs
         }).sort_values(by='Coefficient', ascending=False)
-        st.bar_chart(coeff_df.set_index('Feature'))
-    except:
+        coeff_df = coeff_df.set_index('Feature')
+        st.bar_chart(coeff_df)
+    except Exception as e:
         st.warning("Feature importance not available for this model.")
+        # optional: show exception in logs
+        st.write(e)
 
 st.markdown("---")
 st.caption("Enhanced Streamlit UI — Car Dropdown, Sliders, Better Layout, Feature Coefficients.")
