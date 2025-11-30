@@ -15,8 +15,7 @@ COLS_FILE = "feature_columns.pkl"
 CSV_FILE = "car data.csv"
 
 st.set_page_config(page_title="Car Price Predictor", layout="wide")
-st.title("🚗 Enhanced Car Selling Price Predictor")
-st.write("Improved UI with dropdowns, sliders, and feature importance.")
+st.title(" Car Selling Price Predictor 🚗 ")
 
 # -------------------------------
 # Load artifacts
